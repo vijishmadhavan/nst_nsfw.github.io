@@ -1,3 +1,54 @@
+class LRUCache {
+    constructor(options = {}) {
+        this.max = options.max || 100;
+        this.maxAge = options.maxAge || 1000 * 60 * 60; // 1 hour default
+        this.cache = new Map();
+    }
+
+    get(key) {
+        const item = this.cache.get(key);
+        if (!item) return null;
+
+        // Check if expired
+        if (Date.now() - item.timestamp > this.maxAge) {
+            this.cache.delete(key);
+            return null;
+        }
+
+        // Refresh item's position in cache
+        this.cache.delete(key);
+        this.cache.set(key, item);
+        
+        return item.value;
+    }
+
+    set(key, value) {
+        // Remove oldest if at max capacity
+        if (this.cache.size >= this.max) {
+            const firstKey = this.cache.keys().next().value;
+            this.cache.delete(firstKey);
+        }
+
+        // Add new item
+        this.cache.set(key, {
+            value,
+            timestamp: Date.now()
+        });
+    }
+
+    delete(key) {
+        this.cache.delete(key);
+    }
+
+    clear() {
+        this.cache.clear();
+    }
+
+    get size() {
+        return this.cache.size;
+    }
+}
+
 class NsfwClassifier {
     constructor() {
         this.model = null;
@@ -16,13 +67,18 @@ class NsfwClassifier {
 
     async classifyImage(imageElement) {
         const model = await this.loadModel();
-        const tensor = tf.browser.fromPixels(imageElement)
-            .resizeBilinear([224, 224]) // MobileNet V2 expects 224x224 images
-            .toFloat()
-            .div(tf.scalar(255))
-            .expandDims();
-        const predictions = await model.predict(tensor);
-        return predictions.dataSync();
+        const predictions = await model.predict(
+            tf.tidy(() => {
+                return tf.browser.fromPixels(imageElement)
+                    .resizeBilinear([224, 224])
+                    .toFloat()
+                    .div(tf.scalar(255))
+                    .expandDims();
+            })
+        );
+        const result = predictions.dataSync();
+        predictions.dispose();
+        return result;
     }
 
     async isNsfw(imageUrl) {
@@ -124,6 +180,14 @@ class NsfwDetector {
         this.nsfwClassifier = new NsfwClassifier();
         this.textClassifier = new NsfwTextClassifier();
         
+        // Add cache with size limit to prevent memory issues
+        this.cache = new LRUCache({
+            max: 500,              // Store more results
+            maxAge: 1000 * 60 * 60 // 1 hour cache
+        });
+        this.maxCacheSize = 100; // Limit cache to last 100 items
+        this.cacheDuration = 5 * 60 * 1000; // 5 minutes in milliseconds
+        
         // Fix: Assign arrays to class properties using 'this'
         this.nsfwKeywords = [
             "hardcore","kiss","kissing", "obscene", "nude", "nudity", "naked", "sensual", "provocative", 
@@ -178,7 +242,7 @@ class NsfwDetector {
             "hot girl", "playgirl", "adult movie", "adult site", "erotic movie", 
             "adult content", "bareback", "buttplug", "anal beads", "dildo", "vibrator", 
             "sex toy", "strap-on", "sex slave", "dominatrix", "latex","bra","bondage gear",
-            "lingerie", "swimwear", "bikini","bathtub"
+            "lingerie", "swimwear", "bikini","bathtub","sweaty"
             // Add remaining NSFW keywords here
         ];
         
@@ -193,6 +257,26 @@ class NsfwDetector {
         
         this.ageThreshold = 22;
         this.neutralThreshold = 0.9; // 90% threshold for neutral class
+
+        // Image processing settings
+        this.imageSettings = {
+            maxSize: 512,          // Max dimension for initial check
+            progressiveSizes: [     // Sizes for progressive loading
+                256,  // Quick first pass
+                512,  // Standard check
+                1024  // Only if needed
+            ],
+            confidenceThresholds: {
+                low: 0.4,    // Require higher res if near this
+                high: 0.8    // Can stop early if above this
+            }
+        };
+
+        // Enhanced caching with metadata
+        this.cache = new LRUCache({
+            max: 500,              // Store more results
+            maxAge: 1000 * 60 * 60 // 1 hour cache
+        });
     }
 
     async initialize() {
@@ -247,79 +331,118 @@ class NsfwDetector {
     }
 
     async analyzeImage(imageUrl) {
-        const nsfwResult = await this.nsfwClassifier.isNsfw(imageUrl);
-
-        if (nsfwResult.isNSFW) {
-            // If already NSFW, skip age detection
-            return {
-                isNSFW: true,
-                age: null,
-                nsfwResults: nsfwResult.results
-            };
+        console.time('image-processing');
+        
+        try {
+            const result = await this.processImageProgressive(imageUrl);
+            
+            // Log performance metrics
+            console.log(`Processed at ${result.resolution}px with confidence ${result.confidence}`);
+            
+            return result;
+        } catch (error) {
+            console.error('Image processing error:', error);
+            return { isNSFW: true, reason: 'Processing error' };
+        } finally {
+            console.timeEnd('image-processing');
         }
-
-        // Check if the neutral class probability is above the threshold
-        const neutralProb = nsfwResult.results.find(r => r.className === 'neutral')?.probability || 0;
-        if (neutralProb > this.neutralThreshold) {
-            // If highly neutral, skip age detection
-            return {
-                isNSFW: false,
-                age: null,
-                nsfwResults: nsfwResult.results
-            };
-        }
-
-        // Only load the image and perform age detection if not NSFW and not highly neutral
-        const img = await this.loadImage(imageUrl);
-        const ageResult = await this.detectAge(img);
-
-        const isNSFW = nsfwResult.isNSFW || (ageResult !== null && ageResult < this.ageThreshold);
-
-        return {
-            isNSFW,
-            age: ageResult,
-            nsfwResults: nsfwResult.results
-        };
     }
 
     async isNsfw(hotpotLink) {
+        // Check cache first
+        const cachedResult = this.getFromCache(hotpotLink);
+        if (cachedResult) {
+            console.log('Using cached result for:', hotpotLink);
+            return cachedResult;
+        }
+
         const url = new URL(hotpotLink);
         const title = url.searchParams.get("title");
     
-        // First check: Keywords
+        console.time('keyword-check');
         if (this.containsKeywords(title)) {
-            console.log("NSFW or under-20 content detected in keywords");
-            return { isNSFW: true, reason: 'Keyword match' };
+            const result = { isNSFW: true, reason: 'Keyword match' };
+            this.addToCache(hotpotLink, result);
+            console.timeEnd('keyword-check');
+            return result;
         }
+        console.timeEnd('keyword-check');
     
-        // Second check: Text classification
+        console.time('text-classification');
         const textResult = await this.textClassifier.classifyText(title);
+        console.timeEnd('text-classification');
+        
         if (textResult.isNSFW) {
-            console.log("NSFW content detected by text classifier");
-            return { isNSFW: true, reason: 'Text classification' };
+            const result = { isNSFW: true, reason: 'Text classification' };
+            this.addToCache(hotpotLink, result);
+            return result;
         }
     
-        // Third check: Image analysis
         const imageUrl = this.convertHotpotLinkToS3(hotpotLink);
         if (!imageUrl) {
-            console.error("Failed to convert Hotpot link");
-            return { isNSFW: false, reason: 'Link conversion failed' };
+            const result = { isNSFW: false, reason: 'Link conversion failed' };
+            this.addToCache(hotpotLink, result);
+            return result;
         }
     
+        console.time('image-classification');
         const result = await this.analyzeImage(imageUrl);
-        return result.isNSFW ? 
+        console.timeEnd('image-classification');
+        
+        const finalResult = result.isNSFW ? 
             { isNSFW: true, reason: 'Image classification' } : 
             { isNSFW: false, imageUrl: imageUrl };
+            
+        this.addToCache(hotpotLink, finalResult);
+        return finalResult;
     }
-    
 
-    async loadImage(url) {
+    getFromCache(key) {
+        const cached = this.cache.get(key);
+        if (!cached) return null;
+
+        // Check if cache entry has expired
+        if (Date.now() - cached.timestamp > this.cacheDuration) {
+            this.cache.delete(key);
+            return null;
+        }
+
+        return cached.result;
+    }
+
+    addToCache(key, result) {
+        // Remove oldest entry if cache is full
+        if (this.cache.size >= this.maxCacheSize) {
+            const firstKey = this.cache.keys().next().value;
+            this.cache.delete(firstKey);
+        }
+
+        this.cache.set(key, {
+            result,
+            timestamp: Date.now()
+        });
+    }
+
+    loadImage(url) {
         return new Promise((resolve, reject) => {
             const img = new Image();
             img.crossOrigin = 'anonymous';
-            img.onload = () => resolve(img);
-            img.onerror = reject;
-            img.src = url;
+            
+            const timeout = setTimeout(() => {
+                reject(new Error('Image loading timeout'));
+            }, 10000); // 10 second timeout
+            
+            img.onload = () => {
+                clearTimeout(timeout);
+                resolve(img);
+            };
+            
+            img.onerror = () => {
+                clearTimeout(timeout);
+                reject(new Error('Failed to load image'));
+            };
+            
+            img.src = url + (url.includes('?') ? '&' : '?') + 'cache=' + Date.now();
         });
     }
 
@@ -332,6 +455,122 @@ class NsfwDetector {
             return Math.round(detections[0].age);
         }
         return null;
+    }
+
+    async processImageProgressive(imageUrl) {
+        // Try cache first
+        const cacheKey = `${imageUrl}_${this.imageSettings.maxSize}`;
+        const cached = this.getFromCache(cacheKey);
+        if (cached) return cached;
+
+        let result = null;
+        let confidence = 0;
+        const startTime = performance.now();
+
+        try {
+            // Progressive resolution checking
+            for (const size of this.imageSettings.progressiveSizes) {
+                // Create an image element
+                const img = await this.loadImage(imageUrl);
+                
+                // Resize image
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Calculate new dimensions
+                let [width, height] = this.calculateDimensions(img, size);
+                canvas.width = width;
+                canvas.height = height;
+                
+                // Draw resized image
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Convert canvas to blob
+                const blob = await new Promise(resolve => {
+                    canvas.toBlob(resolve, 'image/jpeg', 0.9);
+                });
+                
+                // Create URL from blob
+                const resizedImageUrl = URL.createObjectURL(blob);
+                
+                // Process with NSFW classifier
+                const currentResult = await this.nsfwClassifier.isNsfw(resizedImageUrl);
+                
+                // Clean up
+                URL.revokeObjectURL(resizedImageUrl);
+                
+                confidence = Math.max(...currentResult.results.map(r => r.probability));
+                
+                // Early return conditions
+                if (currentResult.isNSFW && confidence > this.imageSettings.confidenceThresholds.high) {
+                    result = { isNSFW: true, confidence, resolution: size };
+                    break;
+                }
+                
+                if (!currentResult.isNSFW && confidence > this.imageSettings.confidenceThresholds.high) {
+                    result = { isNSFW: false, confidence, resolution: size };
+                    break;
+                }
+
+                result = { 
+                    isNSFW: currentResult.isNSFW, 
+                    confidence,
+                    resolution: size 
+                };
+            }
+
+            // Cache result
+            this.addToCache(cacheKey, {
+                ...result,
+                timestamp: Date.now(),
+                processingTime: performance.now() - startTime
+            });
+
+            return result;
+
+        } catch (error) {
+            console.error('Progressive image processing error:', error);
+            throw error;
+        }
+    }
+
+    // Helper function to load images
+    loadImage(url) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            
+            img.onload = () => resolve(img);
+            img.onerror = (error) => reject(error);
+            
+            // Add cache buster to prevent caching issues
+            img.src = url + (url.includes('?') ? '&' : '?') + 'cache=' + Date.now();
+        });
+    }
+
+    // Helper function to calculate dimensions
+    calculateDimensions(img, maxSize) {
+        const ratio = Math.min(maxSize / img.width, maxSize / img.height);
+        return [
+            Math.round(img.width * ratio),
+            Math.round(img.height * ratio)
+        ];
+    }
+
+    // Enhanced caching with compression
+    addToCache(key, value) {
+        // Compress confidence scores to 2 decimal places
+        if (value.results) {
+            value.results = value.results.map(r => ({
+                ...r,
+                probability: Math.round(r.probability * 100) / 100
+            }));
+        }
+
+        this.cache.set(key, {
+            ...value,
+            cached: Date.now()
+        });
     }
 }
 

@@ -178,7 +178,7 @@ class NsfwDetector {
             "hot girl", "playgirl", "adult movie", "adult site", "erotic movie", 
             "adult content", "bareback", "buttplug", "anal beads", "dildo", "vibrator", 
             "sex toy", "strap-on", "sex slave", "dominatrix", "latex","bra","bondage gear",
-            "lingerie", "swimwear", "bikini"
+            "lingerie", "swimwear", "bikini","bathtub"
             // Add remaining NSFW keywords here
         ];
         

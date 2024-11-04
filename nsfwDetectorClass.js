@@ -29,7 +29,14 @@ class LRUCache {
             this.cache.delete(firstKey);
         }
 
-        // Add new item
+        // Compress confidence scores to 2 decimal places
+        if (value.results) {
+            value.results = value.results.map(r => ({
+                ...r,
+                probability: Math.round(r.probability * 100) / 100
+            }));
+        }
+
         this.cache.set(key, {
             value,
             timestamp: Date.now()

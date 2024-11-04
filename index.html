@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>NSFW and Age Detection</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.2/dist/face-api.js"></script>
+    <script src="./nsfwDetectorClass.js"></script>
+    <style>
+        .image-container {
+            display: inline-block;
+            margin: 10px;
+            vertical-align: top;
+            position: relative;
+        }
+        .image-container img {
+            max-width: 200px;
+            height: auto;
+        }
+        .result-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <p>Serving: <code class="code">TensorFlow.js NSFW and Age Classification</code></p>
+    </div>
+    <div id="root">
+        <div class="App">
+            <div class="content">
+                <!-- Images and classification results will be displayed here -->
+            </div>
+        </div>
+    </div>
+    <script>
+        // Main function to process and filter Hotpot links
+        window.onload = async () => {
+            const hotpotLinks = [
+                "https://hotpot.ai/s/art-generator/8-6MH1BtQweieYDTm?share=1&title=Gold%20giant%20sea%20dragon%20in%20the%20artic",
+                "https://hotpot.ai/s/art-generator/8-qhnXEdqpbbdupOB?share=1&title=muppet%20and%20baby%20muppet",
+                "https://hotpot.ai/s/art-generator/8-VN6ENJhhmqOt8ap?share=1&title=black%20hellhounds",
+                "https://hotpot.ai/s/art-generator/8-TSDq4g86ydoA9sf?share=1&title=bottom%20view%20of%20sweaty%20wet%20muscular%20tanned%20ponytail%20taylor%20swift%2C%20in%20tactical%20army%20shorts%2C%20hamstrings%2C%20headset%20reclining%20in%20external%20gun%20bubble%20inside%20plastic%20army%20glider%20in%20high%20orbit%2C%20bullet%20casings%20flying",
+                "https://hotpot.ai/s/art-generator/8-YaMqKqLAHrYuHg3?share=1&title=bottom%20view%20of%20sweaty%20wet%20muscular%20tanned%20ponytail%20taylor%20swift%2C%20in%20tactical%20army%20shorts%2C%20hamstrings%2C%20headset%20reclining%20in%20external%20gun%20bubble%20inside%20plastic%20army%20glider%20in%20high%20orbit%2C%20bullet%20casings%20flying",
+                "https://hotpot.ai/s/art-generator/8-EPJ8Ag6voJ6bUnJ?share=1&title=Solarion%20is%20an%20ethereal%20being%20with%20a%20swirling%20form%20in%20bright%20greens%2C%20yellows%2C%20and%20blues%2C%20adorned%20with%20shimmering%2C%20leaf-like%20patterns%20and%20glowing%20solar%20motifs.%20They%20have%20tendrils%20resembling%20glowing%20vines%20for%20reaching%20and%20absorbing%20light%2C%20while%20their%20core%20emits%20a%20vibrant%20energy%20glow.%20Luminous%20energy%20orbs%20hover%20around%20them%2C%20ready%20to%20be%20projected%2C%20enhancing%20their%20dynamic%20presence.%20In%20car%20like%20form",
+                "https://hotpot.ai/s/art-generator/8-LPhPH9uu1VGU6sC?share=1&title=an%20assassin%20with%20a%20gun%20that%20shoots%20green%20farts",
+                "https://hotpot.ai/s/art-generator/8-2bqQgfRutl1ibSO?share=1&title=N%40ked%20woman%2C%20full%20pic%20i.e%20front%20up%20to%20lower%20body",
+                "https://hotpot.ai/s/art-generator/8-zLPIUsU8joGmSdC?share=1&title=vintage%20grainy%2080s%20desaturated%20upper%20body%20photo%2C%2080s%20medium%20hairstyle%2C%20chubby%20body%2C%20cute%20Japanese%20young%20woman%20dressed%20in%20cobalt%20blue%20skimp%20sleeveless%20v-neck%20high-cut%20cutout%20shaped%20monokini%20with%20red%20mantle%20cape%2C%20city%20background",
+                "https://hotpot.ai/s/art-generator/8-SicOtnbH1Hz6DhM?share=1&title=beautiful%20curvy%20mature%20redhead%20warrior%20woman%2C%20flesh%20body%2C%20long%20hair%2C%20big%20belly%2C%20behind%20view%2C%20in%20courtyard",
+                "https://hotpot.ai/s/art-generator/8-iH0sOuFLg0i3ftG?share=1&title=Woman%20sitting%20on%20beach%20holding%20a%20seashell",
+                "https://hotpot.ai/s/art-generator/8-yUaITDjJw0XH5jL?share=1&title=samurai%20warrior%20armor%20robot%20high%20tech%20red%20armor",
+                "https://hotpot.ai/s/art-generator/8-9vXDH7VH1Pnia5h?share=1&title=extreme%20closeup%20shot%20of%20two%20beautiful%20girlfriends%20dressed%20in%20purple%20bandeau%20crop%20tops%20hugging%20each%20other%20and%20smiling%20to%20the%20camera%20laying%20in%20bed",
+                "https://hotpot.ai/s/art-generator/8-s7T7CIeE2CpiTTb?share=1&title=Three%20full-bodied%2C%20youthful%2C%20stunningly%20gorgeous%2C%20young%2C%20Anglican%20girls%20with%20flowing%20hair.%0A%0AThey%20are%20wearing%20a%20fleece%20quilted%20jersey%20pullover%20dress%20with%20thigh-high%20sheepskin%20Uggs%20boots.%0A%0AThey%20are%20smiling%2C%20standing%2C%20and%20facing%20toward%20the%20camera.%2C%20high-angle%20shot",
+                "https://hotpot.ai/s/art-generator/8-YqFKzkb1m0nSuQL?share=1&title=canoe%20with%20forest%20silhouette%20in%20the%20background",
+                "https://hotpot.ai/s/art-generator/8-5lLrtkB6JAJRu1r?share=1&title=vintage%2080s%20desaturated%20upper%20body%20photo%2C%2080s%20medium%20hairstyle%2C%20chubby%20body%2C%20cute%20Japanese%20young%20woman%20dressed%20in%20cobalt%20blue%20skimp%20sleeveless%20v-neck%20high-cut%20cutout%20shaped%20monokini%20with%20red%20mantle%20cape%2C%20green%20neon%20spotlight%20room%20background",
+                "https://hotpot.ai/s/art-generator/8-BdExH7hywFwEZZi?share=1&title=Muscled%20Mike%20Shinoda%20at%2036%20wearing%20elegant%20black%20suit%20slightly%20smiling%20in%20rome",
+                "https://hotpot.ai/s/art-generator/8-0dG3pJUHVJevefH?share=1&title=Black%20Hoodie%20Black%20Pants%20Black%20long%20hair%20chain%20wallet",
+                "https://hotpot.ai/s/art-generator/8-EdiEl6ClkLq7m9Z?share=1&title=Thick%20leg%20Wonder%20Woman%20rubbing%20moisturizer%20under%20skirt",
+                "https://hotpot.ai/s/art-generator/8-ZqPkjvoKl77SBoz?share=1&title=human%20woman%27s%20body%20with%20a%20cat%27s%20tail%20and%20fur%20growing%20out%20of%20her%20backside",
+                "https://hotpot.ai/s/art-generator/8-WrbCLg881a4F6fZ?share=1&title=Thick%20leg%20Wonder%20Woman%20rubbing%20moisturizer%20on%20her%20b%C3%B2obs",
+                "https://hotpot.ai/s/art-generator/8-cnqfdKlJ0pBXTI8?share=1&title=extreme%20low-angle%20extreme%20close-up%20a%20strong%20dark%20powerful%20big%20plump%20angry%20italian%20woman%20behind%20bars%20short%20bobbed%20shoulder-length%20hair%20slightly%20large%20nose%20dark%20blue%20polyester%20minidress%20with%20white%20pattern%20leaning%20doubled%20over%20us%20arms%20out%20closing%20down%20iron%20cage%20doors%20on%20us%2C%20ceiling%20light%20behind%2C%20suburban%20living%20room",
+                "https://hotpot.ai/s/art-generator/8-lGi55ShKCGGhozf?share=1&title=Metallica%20going%20rollerblading",
+                "https://hotpot.ai/s/art-generator/8-eNa1OHHrejZuNOl?share=1&title=extremely%20low-angle%20strong%20dark%20powerful%20big%20plump%20irritated%20agnetha%20falkstog%20in%20her%2020s%20with%20whip%2C%20totally-straight%20hair%20high%20forehead%20puckered%20full%20lips%20dark%20brown%20eyes%20long%20eyelashes%2C%20doubled%20over%20arm%20outstretched%20beating%20us%20violently%2C%20black%20lace%20dress%2C%20against%20a%20bright%20greenscreen%20background",
+                "https://hotpot.ai/s/art-generator/8-hnu19bF1FAiAB6J?share=1&title=Goblin%20arcane%20archer%20with%20green%20skin%2C%20red%20eyes%2C%20black%20hair%2C%20wearing%20a%20black%20leather%20jacket%20with%20a%20red%20scarf%20around%20her%20neck%2C%20holding%20a%20long%20sword%20with%20a%20red%20tassle%20on%20the%20end",
+                "https://hotpot.ai/s/art-generator/8-GiqrblNsncJNND9?share=1&title=extreme%20low-angle%20extreme%20close-up%20of%20face%20of%20two%20strong%20dark%20powerful%20big%20plump%20sweaty%20italian%20women%20short%20bobbed%20shoulder-length%20hair%20slightly%20large%20nose%20full%20lips%20black%20leather%20minidress%20leaning%20doubled%20over%20pressing%20a%20black%20rubber%20funnel%20down%20on%20our%20legs%2C%20ceiling%20light%20behind%2C%20in%20a%20concrete%20dungeon%20looking%20at%20us",
+                "https://hotpot.ai/s/art-generator/8-GCdHgPuLegcTS94?share=1&title=girl%20whit%20no%20collthes%20full%20body",
+                "https://hotpot.ai/s/art-generator/8-aJvD042KxsyHlRd?share=1&title=ur%20mom%20as%20a%20furry",
+                "https://hotpot.ai/s/art-generator/8-kZ6EQT7FmHGETb2?share=1&title=a%20older%20brunette%20woman%20with%20long%20straight%20hair%20wearing%20daisy%20dukes%20crawling%20on%20her%20knees%20hugs%20a%20large%20werewolf",
+                "https://hotpot.ai/s/art-generator/8-7TVSo4wC4qEGgRM?share=1&title=Muscled%20Mike%20Shinoda%20at%2036%20wearing%20elegant%20white%20korean%20shirt%20slightly%20smiling%20in%20rome",
+                "https://hotpot.ai/s/art-generator/8-2x3HhqUwIfbP3EQ?share=1&title=human%20woman%27s%20body%20with%20a%20cat%27s%20tail%20and%20fur%20growing%20out%20of%20her%20backside%20covering%20her%20whole%20body",
+                "https://hotpot.ai/s/art-generator/8-bJtPqU7R0B03rab?share=1&title=hot%20giant%20young%20asian%20tall%20girl%20with%20hide%20hips%20crouching%20on%20the%20floor%20in%20bedroom%20%2C%20show%20full%20body%20from%20the%20back%2C%20tall%20legs%2C%20untied%20hair%2C%20thick%2C%20undresing%2C%20holding%20her%20underwer%2C%20black%20hair%20at%20midnight%2C%20curvy%2C%20view%20from%20below%2C%20hugging%20a%20man%20shorter%20than%20her%2C%20body%20close%20view",
+                "https://hotpot.ai/s/art-generator/8-1ypi8ibo6F7C8Zf?share=1&title=Hot%20%7B%7BE%7DROTICS%7DSIN%20City%20BoRDeLlO.%7BSeductiv%7Bely%7D%7DHot-EnchantrESS%2C%20Hot-Provocative%2C%20(%7BNaught%7BYy%7D%7DBlacked%20Diamond-secret%20Ppearl%20Sinful%7BSe%7Bxy%7D%7DHoTt%7BPor%7BNn%7D%7D%20%7BBondag%7BE%7D%7DSlave)Leia%20Skywalker%20Tera%20Patrick%20Ttaimanin%20Asagi%20Lilith%20Soft%20HaREeM%20HoTt-WaifU.%20Hot%20DEepeSt%20RrICH-ToNe%7B%7BSs%7Deducer%7DTreaSurE-ESS%20CoFfee-OiLled%20OiLlY%20%7BSuCcuBu%7BSs%7D%7DSkiN.%7BKeSs18%7B%2B%7D%7DAdults%20Only.%20Strip-Pole%7BKink%7BeSs%7D%7D%7BStripp%7Ber%7D%7DLasciviouseSs",
+                "https://hotpot.ai/s/art-generator/8-gdAl6mSaxS34Uin?share=1&title=Two%20abusive%20and%20amorously%20aggresive%20fortyfiveyearold%20masculine%20sjw%20feminist%20queer%20lesbian%20goth%20shemales%20with%20long%20messy%20provocative%20purple%20hair%20with%20straight%20bangs%2C%20thick%20eyebrows%2C%20long%20unshaved%20bodyhair%2C%20and%20thick%20bulging%20camel-toe%20smiling%20predatorally%20and%20trying%20to%20peg%20you%20with%20strapons%20in%20a%20filthy%20pink%20feminine%20lesbian%20bedroom",
+                "https://hotpot.ai/s/art-generator/8-jKCrm2qiNwmO8Rq?share=1&title=Two%20abusive%20and%20amorously%20aggresive%20fortyfiveyearold%20masculine%20sjw%20feminist%20queer%20lesbian%20goth%20shemales%20with%20long%20messy%20provocative%20purple%20hair%20with%20straight%20bangs%2C%20thick%20eyebrows%2C%20long%20unshaved%20bodyhair%2C%20and%20thick%20bulging%20camel-toe%20smiling%20predatorally%20and%20trying%20to%20peg%20you%20with%20strapons%20in%20a%20filthy%20pink%20feminine%20lesbian%20bedroom",
+                "https://hotpot.ai/s/art-generator/8-qk59fI9ZGQmdWQb?share=1&title=extreme%20low-angle%20extreme%20close-up%20a%20strong%20dark%20powerful%20big%20plump%20sweaty%20italian%20woman%20short%20bobbed%20shoulder-length%20hair%20slightly%20large%20nose%20full%20lips%20black%20leather%20minidress%20squeezing%20a%20man%20in%20an%20iron%20container%20below%20her%2C%20ceiling%20light%20behind%2C%20in%20a%20concrete%20dungeon%20looking%20at%20us",
+                "https://hotpot.ai/s/art-generator/8-w0UV05Noo02g0rL?share=1&title=muscular%20curvy%20thick%20serena%20williams%20as%20spider-man%2C%20view%20from%20back",
+                "https://hotpot.ai/s/art-generator/8-vqy3LkFRqhNhr0a?share=1&title=full%20body%20photo%3B%20a%20young%20Caucasian%20woman%20with%20a%20confident%20expression%2C%20short%20ponytail%20Auburn%20hairstyle%2C%20freckled%20face.%20she%27s%20wearing%20a%20black%20hoodie%20with%20hot-pink%20yoga%20pants%2C%20and%20small%20necklace.%20Rooftop%20setting.",
+                "https://hotpot.ai/s/art-generator/8-7woeoXKaO9pCNfX?share=1&title=extreme%20close-up%20a%20strong%20dark%20powerful%20big%20plump%20sweaty%20italian%20woman%20short%20bobbed%20shoulder-length%20hair%20slightly%20large%20nose%20full%20lips%20black%20leather%20minidress%20turning%20a%20handle%20on%20a%20grimacing%20man%20who%20is%20inside%20a%20long%20iron%20container%20beneath%20her%2C%20in%20a%20concrete%20dungeon",
+                "https://hotpot.ai/s/art-generator/8-CoLPQJ72gLWUan3?share=1&title=two%20angry%20women%20with%20beautiful%20bodies%20in%20too%20short%20lambada%20lace%20miniskirts%20and%20protuding%20beak-masks%20grappling%20in%20an%20empty%2019th%20century%20room%2C%20seen%20from%20the%20back",
+                "https://hotpot.ai/s/art-generator/8-f2wKqTmvMoySf7K?share=1&title=two%20angry%20women%20with%20beautiful%20bodies%20in%20too%20short%20lambada%20lace%20miniskirts%20and%20protuding%20beak-masks%20grappling%20in%20an%20empty%2019th%20century%20room%2C%20seen%20from%20the%20back",
+                "https://hotpot.ai/s/art-generator/8-CtClcWw31Z4ijXy?share=1&title=hot%20giant%20%20young%20tall%20girl%20with%20hide%20hips%20crouching%20on%20the%20floor%20in%20wardrobe%20%2C%20show%20full%20body%20from%20the%20back%2C%20tall%20legs%2C%20untied%20hair%2C%20thick%2C%20undresing%2C%20holding%20her%20underwer%2C%20black%20hair",
+            ];
+
+            // Initialize the NSFW detector and load necessary models
+            const detector = new window.NsfwDetector();
+            await detector.initialize();
+
+            // Process each Hotpot link
+            for (const link of hotpotLinks) {
+                const result = await detector.isNsfw(link);
+                if (!result.isNSFW && result.imageUrl) {
+                    displayImage(result.imageUrl); // Display only if safe and imageUrl exists
+                } else {
+                    console.log("NSFW content not displayed:", link, "Reason:", result.reason);
+                }
+            }
+        };
+
+        // Display safe images in the content area using the converted S3 link
+        function displayImage(imageUrl) {
+            const contentDiv = document.querySelector('.content');
+            const container = document.createElement('div');
+            container.className = 'image-container';
+
+            const imgElement = document.createElement('img');
+            imgElement.src = imageUrl;
+            imgElement.alt = "Safe Image";
+            imgElement.style = "max-width:100%; height:auto; margin-bottom: 20px;";
+
+            container.appendChild(imgElement);
+            contentDiv.appendChild(container);
+        }
+    </script>
+</body>
+</html>

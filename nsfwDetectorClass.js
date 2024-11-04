@@ -260,15 +260,14 @@ class NsfwDetector {
 
         // Image processing settings
         this.imageSettings = {
-            maxSize: 512,          // Max dimension for initial check
-            progressiveSizes: [     // Sizes for progressive loading
-                256,  // Quick first pass
-                512,  // Standard check
-                1024  // Only if needed
+            maxSize: 512,          // Capped at 512
+            progressiveSizes: [     
+                256,              // Fast first pass
+                512               // Final check if needed
             ],
             confidenceThresholds: {
-                low: 0.4,    // Require higher res if near this
-                high: 0.8    // Can stop early if above this
+                low: 0.5,
+                high: 0.8         // Can be more strict with smaller sizes
             }
         };
 
@@ -277,6 +276,10 @@ class NsfwDetector {
             max: 500,              // Store more results
             maxAge: 1000 * 60 * 60 // 1 hour cache
         });
+
+        // Add to class properties
+        this.imagePreloadQueue = new Map();
+        this.preloadLimit = 5;  // Limit concurrent preloads
     }
 
     async initialize() {
@@ -423,7 +426,20 @@ class NsfwDetector {
         });
     }
 
-    loadImage(url) {
+    async loadImage(url) {
+        // Check preload cache first
+        const preloaded = this.imagePreloadQueue.get(url);
+        if (preloaded) {
+            try {
+                const img = await preloaded.promise;
+                this.imagePreloadQueue.delete(url);  // Cleanup
+                return img;
+            } catch (error) {
+                this.imagePreloadQueue.delete(url);  // Cleanup on error
+            }
+        }
+
+        // Fallback to regular loading
         return new Promise((resolve, reject) => {
             const img = new Image();
             img.crossOrigin = 'anonymous';
@@ -534,20 +550,6 @@ class NsfwDetector {
         }
     }
 
-    // Helper function to load images
-    loadImage(url) {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            
-            img.onload = () => resolve(img);
-            img.onerror = (error) => reject(error);
-            
-            // Add cache buster to prevent caching issues
-            img.src = url + (url.includes('?') ? '&' : '?') + 'cache=' + Date.now();
-        });
-    }
-
     // Helper function to calculate dimensions
     calculateDimensions(img, maxSize) {
         const ratio = Math.min(maxSize / img.width, maxSize / img.height);
@@ -570,6 +572,52 @@ class NsfwDetector {
         this.cache.set(key, {
             ...value,
             cached: Date.now()
+        });
+    }
+
+    // Preload method
+    preloadImages(urls) {
+        // Remove old preloads
+        for (const [url, data] of this.imagePreloadQueue) {
+            if (Date.now() - data.timestamp > 30000) {  // 30s timeout
+                this.imagePreloadQueue.delete(url);
+            }
+        }
+
+        // Add new URLs to preload queue
+        urls.forEach(url => {
+            if (!this.imagePreloadQueue.has(url) && 
+                this.imagePreloadQueue.size < this.preloadLimit) {
+                
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                
+                const promise = new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        this.imagePreloadQueue.delete(url);
+                        reject(new Error('Preload timeout'));
+                    }, 30000);
+
+                    img.onload = () => {
+                        clearTimeout(timeout);
+                        resolve(img);
+                    };
+                    
+                    img.onerror = () => {
+                        clearTimeout(timeout);
+                        this.imagePreloadQueue.delete(url);
+                        reject(new Error('Failed to preload'));
+                    };
+                });
+
+                this.imagePreloadQueue.set(url, {
+                    img,
+                    promise,
+                    timestamp: Date.now()
+                });
+                
+                img.src = url + (url.includes('?') ? '&' : '?') + 'cache=' + Date.now();
+            }
         });
     }
 }

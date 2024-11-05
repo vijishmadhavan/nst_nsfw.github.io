@@ -2,35 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>NSFW and Age Detection</title>
+    <title>NSFW Detection</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.2/dist/face-api.js"></script>
     <script src="./nsfwDetectorClass.js"></script>
-    <style>
-        .image-container {
-            display: inline-block;
-            margin: 10px;
-            vertical-align: top;
-            position: relative;
-        }
-        .image-container img {
-            max-width: 200px;
-            height: auto;
-        }
-        .result-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            background-color: rgba(0, 0, 0, 0.7);
-            color: white;
-            padding: 5px;
-            font-size: 14px;
-        }
-    </style>
 </head>
 <body>
     <div id="header">
-        <p>Serving: <code class="code">TensorFlow.js NSFW and Age Classification</code></p>
+        <p>Serving: <code class="code">TensorFlow.js NSFW Detection</code></p>
     </div>
     <div id="root">
         <div class="App">
@@ -44,6 +22,10 @@
         window.onload = async () => {
             const hotpotLinks = [
                 "https://hotpot.ai/s/art-generator/8-PO0PLZjhDCwypig?share=1&title=flood",
+                "https://hotpot.ai/s/art-generator/8-oEItxJI939rmb7U?share=1&title=Rihanna%20muscular%2C%20really%20wet%20skin%2C%20lying%20on%20her%20back%20with%20her%20legs%20in%20the%20air%2C%20on%20woven%20hemp%20bed%2C%20in%20the%20jungle%2C%20up%20close",
+                "https://hotpot.ai/s/art-generator/8-fj8yplg2EkSPhdc?share=1&title=A%20small%20stack%20of%20stones",
+                "https://hotpot.ai/s/art-generator/8-kP2bI8X6k3iZHOE?share=1&title=female%20teacher%20with%20dark%20blue%20very%20square%20glasses%20and%20brown%20curly%20hair%20blue%20eyes%20round%20face%20%20t-shirt",
+                "https://hotpot.ai/s/art-generator/8-GVULIDKk083u7fy?share=1&title=Human%20woman%20in%20a%20cat%E2%80%99s%20body%20with%20legs",
                 "https://hotpot.ai/s/art-generator/8-I51WWrC5gGVCPuW?share=1&title=3%20people%20in%20a%20lively%20alley%20under%20an%20overpass%20beside%20a%20medieval%20terracotta%20fort%2C%20a%20petite%2029-year-old%20dark-skinned%20Indian%20priestess%2C%20muscly%20body%2C%20in%20curls%2C%20huge%20saggy%20round%20bust%2C%20works%20as%20a%20matchmaker.%20She%20speaks%20to%20a%20stylish%20slender%20cougar%3B%20while%20--a%20contrasting%20African%20Ugandan%20man%20stands%20quietly%20next%20to%20them.%20Cash%20on%20matchmaker%27s%20hand%20implies%20payment%20for%20her%20work.%20photorealistic%2C%20contrast",
                 "https://hotpot.ai/s/art-generator/8-f0n58qN0KrEubSR?share=1&title=a%20super%20hyper%20futuristic%20water%20bottle%20called%20ecosip%20its%20made%20by%20a%20kid%20%2F%20diy%20with%20cardboard%20looking%20like%20a%20kid%20made%20it%20looking%20quite%20messy%20THE%20BOTTLE%20IS%20MADE%20OUT%20OF%20%20CARDBOARD%20GET%20IT%20RIGHT",
                 "https://hotpot.ai/s/art-generator/8-bVevzHg2RTJnPNM?share=1&title=Very%20Fat%20woman%20with%20black%20hair%20and%20a%20massive%20belly%20wearing%20a%20black%20quarter%20zip%20sweater%20and%20beige%20leggings.",
@@ -110,7 +92,7 @@
                 "https://hotpot.ai/s/art-generator/8-7TVSo4wC4qEGgRM?share=1&title=Muscled%20Mike%20Shinoda%20at%2036%20wearing%20elegant%20white%20korean%20shirt%20slightly%20smiling%20in%20rome",
                 "https://hotpot.ai/s/art-generator/8-2x3HhqUwIfbP3EQ?share=1&title=human%20woman%27s%20body%20with%20a%20cat%27s%20tail%20and%20fur%20growing%20out%20of%20her%20backside%20covering%20her%20whole%20body",
                 "https://hotpot.ai/s/art-generator/8-bJtPqU7R0B03rab?share=1&title=hot%20giant%20young%20asian%20tall%20girl%20with%20hide%20hips%20crouching%20on%20the%20floor%20in%20bedroom%20%2C%20show%20full%20body%20from%20the%20back%2C%20tall%20legs%2C%20untied%20hair%2C%20thick%2C%20undresing%2C%20holding%20her%20underwer%2C%20black%20hair%20at%20midnight%2C%20curvy%2C%20view%20from%20below%2C%20hugging%20a%20man%20shorter%20than%20her%2C%20body%20close%20view",
-                "https://hotpot.ai/s/art-generator/8-1ypi8ibo6F7C8Zf?share=1&title=Hot%20%7B%7BE%7DROTICS%7DSIN%20City%20BoRDeLlO.%7BSeductiv%7Bely%7D%7DHot-EnchantrESS%2C%20Hot-Provocative%2C%20(%7BNaught%7BYy%7D%7DBlacked%20Diamond-secret%20Ppearl%20Sinful%7BSe%7Bxy%7D%7DHoTt%7BPor%7BNn%7D%7D%20%7BBondag%7BE%7D%7DSlave)Leia%20Skywalker%20Tera%20Patrick%20Ttaimanin%20Asagi%20Lilith%20Soft%20HaREeM%20HoTt-WaifU.%20Hot%20DEepeSt%20RrICH-ToNe%7B%7BSs%7Deducer%7DTreaSurE-ESS%20CoFfee-OiLled%20OiLlY%20%7BSuCcuBu%7BSs%7D%7DSkiN.%7BKeSs18%7B%2B%7D%7DAdults%20Only.%20Strip-Pole%7BKink%7BeSs%7D%7D%7BStripp%7Ber%7D%7DLasciviouseSs",
+                "https://hotpot.ai/s/art-generator/8-1ypi8ibo6F7C8Zf?share=1&title=Hot%20%7B%7BE%7DROTICS%7DSIN%20City%20BoRDeLlO.%7BSeductiv%7Bely%7D%7DHot-EnchantrESS%2C%20Hot-Provocative%2C%20(%7BNaught%7BYy%7D%7DBlacked%20Diamond-secret%20Ppearl%20Sinful%7BSe%7Bxy%7D%7DHoTt%7BPor%7BNn%7D%7D%20%7BBondag%7BE%7D%7DSlave)Leia%20Skywalker%20Tera%20Patrick%20Ttaimanin%20Asagi%20Lilith%20Soft%20HaREeM%20HoTt-WaifU.%20Hot%20DEepeSt%20RrICH-ToNe%7B%7BSs%7Deducer%7DTreaSurE-ESS%20CoFfee-OiLled%20OiLlY%20%7BSuCcuBu%7BSs%7D%7DSkiN.%7BKeSs18%7B%2B%7D%7DAdults%20Only.%20Strip-Pole%7BKink%7BeSs%7D%7BStripp%7Ber%7D%7DLasciviouseSs",
                 "https://hotpot.ai/s/art-generator/8-gdAl6mSaxS34Uin?share=1&title=Two%20abusive%20and%20amorously%20aggresive%20fortyfiveyearold%20masculine%20sjw%20feminist%20queer%20lesbian%20goth%20shemales%20with%20long%20messy%20provocative%20purple%20hair%20with%20straight%20bangs%2C%20thick%20eyebrows%2C%20long%20unshaved%20bodyhair%2C%20and%20thick%20bulging%20camel-toe%20smiling%20predatorally%20and%20trying%20to%20peg%20you%20with%20strapons%20in%20a%20filthy%20pink%20feminine%20lesbian%20bedroom",
                 "https://hotpot.ai/s/art-generator/8-jKCrm2qiNwmO8Rq?share=1&title=Two%20abusive%20and%20amorously%20aggresive%20fortyfiveyearold%20masculine%20sjw%20feminist%20queer%20lesbian%20goth%20shemales%20with%20long%20messy%20provocative%20purple%20hair%20with%20straight%20bangs%2C%20thick%20eyebrows%2C%20long%20unshaved%20bodyhair%2C%20and%20thick%20bulging%20camel-toe%20smiling%20predatorally%20and%20trying%20to%20peg%20you%20with%20strapons%20in%20a%20filthy%20pink%20feminine%20lesbian%20bedroom",
                 "https://hotpot.ai/s/art-generator/8-qk59fI9ZGQmdWQb?share=1&title=extreme%20low-angle%20extreme%20close-up%20a%20strong%20dark%20powerful%20big%20plump%20sweaty%20italian%20woman%20short%20bobbed%20shoulder-length%20hair%20slightly%20large%20nose%20full%20lips%20black%20leather%20minidress%20squeezing%20a%20man%20in%20an%20iron%20container%20below%20her%2C%20ceiling%20light%20behind%2C%20in%20a%20concrete%20dungeon%20looking%20at%20us",
@@ -152,4 +134,5 @@
     </script>
 </body>
 </html>
+
 

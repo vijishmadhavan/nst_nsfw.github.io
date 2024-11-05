@@ -44,6 +44,16 @@
         window.onload = async () => {
             const hotpotLinks = [
                 "https://hotpot.ai/s/art-generator/8-PO0PLZjhDCwypig?share=1&title=flood",
+                "https://hotpot.ai/s/art-generator/8-I51WWrC5gGVCPuW?share=1&title=3%20people%20in%20a%20lively%20alley%20under%20an%20overpass%20beside%20a%20medieval%20terracotta%20fort%2C%20a%20petite%2029-year-old%20dark-skinned%20Indian%20priestess%2C%20muscly%20body%2C%20in%20curls%2C%20huge%20saggy%20round%20bust%2C%20works%20as%20a%20matchmaker.%20She%20speaks%20to%20a%20stylish%20slender%20cougar%3B%20while%20--a%20contrasting%20African%20Ugandan%20man%20stands%20quietly%20next%20to%20them.%20Cash%20on%20matchmaker%27s%20hand%20implies%20payment%20for%20her%20work.%20photorealistic%2C%20contrast",
+                "https://hotpot.ai/s/art-generator/8-f0n58qN0KrEubSR?share=1&title=a%20super%20hyper%20futuristic%20water%20bottle%20called%20ecosip%20its%20made%20by%20a%20kid%20%2F%20diy%20with%20cardboard%20looking%20like%20a%20kid%20made%20it%20looking%20quite%20messy%20THE%20BOTTLE%20IS%20MADE%20OUT%20OF%20%20CARDBOARD%20GET%20IT%20RIGHT",
+                "https://hotpot.ai/s/art-generator/8-bVevzHg2RTJnPNM?share=1&title=Very%20Fat%20woman%20with%20black%20hair%20and%20a%20massive%20belly%20wearing%20a%20black%20quarter%20zip%20sweater%20and%20beige%20leggings.",
+                "https://hotpot.ai/s/art-generator/8-MDi0OHNochMGkgd?share=1&title=A%20beautiful%2020-year-old%20ginger%20woman%20lies%20on%20a%20pink%20couch%20in%20an%20old-fashioned%20pink%20library%20with%20pink%20wallpaper%2C%20falling%20asleep.%20She%20has%20a%20short%20shaggy%20bob%20with%20bangs%2C%20a%20pink%20ribbon%20in%20her%20hair%2C%20pale%20skin%2C%20many%20freckles%2C%20and%20an%20innocent%20look.%20She%20wears%20sleeveless%2C%20revealing%2C%20translucent%2C%20two-piece%2C%20see-thru%20lace%2C%20skivvies%20and%20pink%20socks.%20She%20yawns%2C%20her%20mouth%20is%20open.%20Full%20body%20view.",
+                "https://hotpot.ai/s/art-generator/8-BdSDHFb5gTglY9O?share=1&title=Giant%20biege%20jelly%20slug%20straddle%20between%20legs%20woman%20-clothes%20skin%20flesh%20euphoria%20jelly%20bed%20on%20hands%20aamd%20knees%20view%20from%20behind",
+                "https://hotpot.ai/s/art-generator/8-Oxud0bwlUWZTRw5?share=1&title=Woman%20finding%20white%20spacesuit%2C%20helmet%2C%20goggles%2C%20backpack%2C%20and%20gloves%20in%20prison",
+                "https://hotpot.ai/s/art-generator/8-X0ewT2MbFtZzU4A?share=1&title=Party%20with%20blonde%20girls%20getting%20knocked%20up%20in%20the%20bedroom",
+                "https://hotpot.ai/s/art-generator/8-L0gTS1Jy8mspngV?share=1&title=skibidi%20toile",
+                "https://hotpot.ai/s/art-generator/8-lHIpPFq4vYv01MD?share=1&title=Good%20looking%2030%20something%20male%20gipsy%2C%20devious%20look%2C%20full%20beard%2C%20slightly%20armored%2C%20with%20silver%20and%20crimson%20clothing%20and%20several%20holy%20symbols%20and%20arcane%20sigils",
+                "https://hotpot.ai/s/art-generator/8-ULBFDrPM6rEj2Yn?share=1&title=Medieval%20village%205%20houses%2C%20timber%2C%20wattle%20and%20daub%2C%20thatched%20roofs%2C%20single%20story%2C%20flat%20farmland%2C%20cottage%20gardens",
                 "https://hotpot.ai/s/art-generator/8-gsOZUc2SqmIt688?share=1&title=Skinny%2C%20anorexic%20and%20young%20girl%20in%20white%2C%20very%20thin%2C%20look%20through%2C%20too%20small%2C%20in%20skintone%20leotard%20on%20knees%20during%20gymnastic%20split%20exercise.%20Camera%20is%20on%20floor%2C%20view%20at%20front%20(zoomed%20in)%20of%20girl.%20Leotard%20is%20fully%20transparent%2C%20crystalline%20and%20lucent.",
                 "https://hotpot.ai/s/art-generator/8-Nu9YFE56W5LeBZQ?share=1&title=deadpool",
                 "https://hotpot.ai/s/art-generator/8-rv1KLwsiQGtvcQB?share=1&title=turks%20cars",
@@ -120,9 +130,7 @@
             for (const link of hotpotLinks) {
                 const result = await detector.isNsfw(link);
                 if (!result.isNSFW && result.imageUrl) {
-                    displayImage(result.imageUrl); // Display only if safe and imageUrl exists
-                } else {
-                    console.log("NSFW content not displayed:", link, "Reason:", result.reason);
+                    displayImage(result.imageUrl);
                 }
             }
         };
@@ -144,3 +152,4 @@
     </script>
 </body>
 </html>
+

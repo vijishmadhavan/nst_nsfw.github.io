@@ -65,9 +65,7 @@ class NsfwClassifier {
 
     async loadModel() {
         if (!this.model) {
-            console.log('Loading model from:', this.MODEL_URL);
             this.model = await tf.loadLayersModel(this.MODEL_URL);
-            console.log('Model loaded:', this.model);
         }
         return this.model;
     }
@@ -114,7 +112,6 @@ class NsfwClassifier {
             isNSFW,
             results
         };
-        console.log('NSFW detection result:', result);
         return result;
     }
 }
@@ -130,11 +127,9 @@ class NsfwTextClassifier {
 
     async loadModel() {
         if (!this.model) {
-            console.log('Loading text classification model...');
             this.model = await tf.loadLayersModel(this.MODEL_URL);
             const tokenizerResponse = await fetch(this.TOKENIZER_URL);
             this.tokenizer = await tokenizerResponse.json();
-            console.log('Text classification model loaded');
         }
         return this.model;
     }
@@ -249,7 +244,7 @@ class NsfwDetector {
             "hot girl", "playgirl", "adult movie", "adult site", "erotic movie", 
             "adult content", "bareback", "buttplug", "anal beads", "dildo", "vibrator", 
             "sex toy", "strap-on", "sex slave", "dominatrix", "latex","bra","bondage gear",
-            "lingerie", "swimwear", "bikini","bathtub","sweaty"
+            "lingerie", "swimwear", "bikini","bathtub","sweaty","flesh body"
             // Add remaining NSFW keywords here
         ];
         
@@ -290,35 +285,12 @@ class NsfwDetector {
     }
 
     async initialize() {
-        console.time('Total Model Loading Time');
-        
-        // Individual model timing
-        console.log('Starting model loading...');
-        
-        const startTime = performance.now();
-        
-        try {
-            await Promise.all([
-                this.timeModelLoad('NSFW Classifier', () => this.nsfwClassifier.loadModel()),
-                this.timeModelLoad('Text Classifier', () => this.textClassifier.loadModel()),
-                this.timeModelLoad('Face Detector', () => faceapi.nets.tinyFaceDetector.loadFromUri('./models')),
-                this.timeModelLoad('Age Gender Net', () => faceapi.nets.ageGenderNet.loadFromUri('./models'))
-            ]);
-            
-            const endTime = performance.now();
-            console.log(`Total initialization time: ${((endTime - startTime) / 1000).toFixed(2)} seconds`);
-        } catch (error) {
-            console.error('Error during initialization:', error);
-        }
-        
-        console.timeEnd('Total Model Loading Time');
-    }
-
-    async timeModelLoad(modelName, loadFunction) {
-        const start = performance.now();
-        await loadFunction();
-        const end = performance.now();
-        console.log(`${modelName} loaded in ${((end - start) / 1000).toFixed(2)} seconds`);
+        await Promise.all([
+            this.nsfwClassifier.loadModel(),
+            this.textClassifier.loadModel(),
+            faceapi.nets.tinyFaceDetector.loadFromUri('./models'),
+            faceapi.nets.ageGenderNet.loadFromUri('./models')
+        ]);
     }
 
     containsKeywords(text) {
@@ -341,69 +313,55 @@ class NsfwDetector {
     }
 
     async analyzeImage(imageUrl) {
-        console.time('image-processing');
-        
         try {
             const result = await this.processImageProgressive(imageUrl);
-            
-            // Log performance metrics
-            console.log(`Processed at ${result.resolution}px with confidence ${result.confidence}`);
-            
             return result;
         } catch (error) {
-            console.error('Image processing error:', error);
             return { isNSFW: true, reason: 'Processing error' };
-        } finally {
-            console.timeEnd('image-processing');
         }
     }
 
     async isNsfw(hotpotLink) {
-        // Check cache first
         const cachedResult = this.getFromCache(hotpotLink);
         if (cachedResult) {
-            console.log('Using cached result for:', hotpotLink);
+            if (cachedResult.isNSFW) {
+                console.log('NSFW detected:', hotpotLink, 'Reason:', cachedResult.reason);
+            }
             return cachedResult;
         }
 
         const url = new URL(hotpotLink);
         const title = url.searchParams.get("title");
     
-        console.time('keyword-check');
         if (this.containsKeywords(title)) {
             const result = { isNSFW: true, reason: 'Keyword match' };
             this.addToCache(hotpotLink, result);
-            console.timeEnd('keyword-check');
+            console.log('NSFW detected:', hotpotLink, 'Reason:', result.reason);
             return result;
         }
-        console.timeEnd('keyword-check');
     
-        console.time('text-classification');
         const textResult = await this.textClassifier.classifyText(title);
-        console.timeEnd('text-classification');
-        
         if (textResult.isNSFW) {
             const result = { isNSFW: true, reason: 'Text classification' };
             this.addToCache(hotpotLink, result);
+            console.log('NSFW detected:', hotpotLink, 'Reason:', result.reason);
             return result;
         }
     
         const imageUrl = this.convertHotpotLinkToS3(hotpotLink);
         if (!imageUrl) {
-            const result = { isNSFW: false, reason: 'Link conversion failed' };
-            this.addToCache(hotpotLink, result);
-            return result;
+            return { isNSFW: false, reason: 'Link conversion failed' };
         }
     
-        console.time('image-classification');
         const result = await this.analyzeImage(imageUrl);
-        console.timeEnd('image-classification');
-        
         const finalResult = result.isNSFW ? 
             { isNSFW: true, reason: 'Image classification' } : 
             { isNSFW: false, imageUrl: imageUrl };
             
         this.addToCache(hotpotLink, finalResult);
+        if (finalResult.isNSFW) {
+            console.log('NSFW detected:', hotpotLink, 'Reason:', finalResult.reason);
+        }
         return finalResult;
     }
 
@@ -481,14 +439,12 @@ class NsfwDetector {
     }
 
     async processImageProgressive(imageUrl) {
-        // Try cache first
         const cacheKey = `${imageUrl}_${this.imageSettings.maxSize}`;
         const cached = this.getFromCache(cacheKey);
         if (cached) return cached;
 
         let result = null;
         let confidence = 0;
-        const startTime = performance.now();
 
         try {
             // Progressive resolution checking
@@ -524,17 +480,11 @@ class NsfwDetector {
                 
                 confidence = Math.max(...currentResult.results.map(r => r.probability));
                 
-                // Early return conditions
                 if (currentResult.isNSFW && confidence > this.imageSettings.confidenceThresholds.high) {
                     result = { isNSFW: true, confidence, resolution: size };
                     break;
                 }
                 
-                if (!currentResult.isNSFW && confidence > this.imageSettings.confidenceThresholds.high) {
-                    result = { isNSFW: false, confidence, resolution: size };
-                    break;
-                }
-
                 result = { 
                     isNSFW: currentResult.isNSFW, 
                     confidence,
@@ -542,17 +492,10 @@ class NsfwDetector {
                 };
             }
 
-            // Cache result
-            this.addToCache(cacheKey, {
-                ...result,
-                timestamp: Date.now(),
-                processingTime: performance.now() - startTime
-            });
-
+            this.addToCache(cacheKey, result);
             return result;
 
         } catch (error) {
-            console.error('Progressive image processing error:', error);
             throw error;
         }
     }

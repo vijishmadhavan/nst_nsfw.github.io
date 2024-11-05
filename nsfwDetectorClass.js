@@ -287,9 +287,7 @@ class NsfwDetector {
     async initialize() {
         await Promise.all([
             this.nsfwClassifier.loadModel(),
-            this.textClassifier.loadModel(),
-            faceapi.nets.tinyFaceDetector.loadFromUri('./models'),
-            faceapi.nets.ageGenderNet.loadFromUri('./models')
+            this.textClassifier.loadModel()
         ]);
     }
 
@@ -425,17 +423,6 @@ class NsfwDetector {
             
             img.src = url + (url.includes('?') ? '&' : '?') + 'cache=' + Date.now();
         });
-    }
-
-    async detectAge(img) {
-        const detections = await faceapi
-            .detectAllFaces(img, new faceapi.TinyFaceDetectorOptions())
-            .withAgeAndGender();
-
-        if (detections.length > 0) {
-            return Math.round(detections[0].age);
-        }
-        return null;
     }
 
     async processImageProgressive(imageUrl) {

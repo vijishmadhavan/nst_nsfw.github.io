@@ -481,60 +481,55 @@ class NsfwDetector {
     }
 
     async processImageProgressive(imageUrl) {
-        // Try cache first
+        // Start with a very small size first for quick initial check
+        const progressiveSizes = [128, 256, 512]; // Added smaller initial size
+        const confidenceThresholds = {
+            128: 0.85,  // Higher confidence needed for small size
+            256: 0.75,  // Medium confidence for medium size
+            512: 0.65   // Lower confidence acceptable for full size
+        };
+
         const cacheKey = `${imageUrl}_${this.imageSettings.maxSize}`;
         const cached = this.getFromCache(cacheKey);
         if (cached) return cached;
 
         let result = null;
-        let confidence = 0;
         const startTime = performance.now();
 
         try {
-            // Progressive resolution checking
-            for (const size of this.imageSettings.progressiveSizes) {
-                // Create an image element
+            for (const size of progressiveSizes) {
                 const img = await this.loadImage(imageUrl);
-                
-                // Resize image
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
-                // Calculate new dimensions
                 let [width, height] = this.calculateDimensions(img, size);
                 canvas.width = width;
                 canvas.height = height;
                 
-                // Draw resized image
+                // Use lower quality for initial passes to improve speed
+                const quality = size === 512 ? 0.9 : 0.7;
                 ctx.drawImage(img, 0, 0, width, height);
                 
-                // Convert canvas to blob
-                const blob = await new Promise(resolve => {
-                    canvas.toBlob(resolve, 'image/jpeg', 0.9);
-                });
+                const blob = await new Promise(resolve => 
+                    canvas.toBlob(resolve, 'image/jpeg', quality)
+                );
                 
-                // Create URL from blob
                 const resizedImageUrl = URL.createObjectURL(blob);
-                
-                // Process with NSFW classifier
                 const currentResult = await this.nsfwClassifier.isNsfw(resizedImageUrl);
-                
-                // Clean up
                 URL.revokeObjectURL(resizedImageUrl);
                 
-                confidence = Math.max(...currentResult.results.map(r => r.probability));
+                const confidence = Math.max(...currentResult.results.map(r => r.probability));
                 
-                // Early return conditions
-                if (currentResult.isNSFW && confidence > this.imageSettings.confidenceThresholds.high) {
-                    result = { isNSFW: true, confidence, resolution: size };
+                // Early return if we're confident enough at current resolution
+                if (confidence > confidenceThresholds[size]) {
+                    result = { 
+                        isNSFW: currentResult.isNSFW, 
+                        confidence,
+                        resolution: size 
+                    };
                     break;
                 }
                 
-                if (!currentResult.isNSFW && confidence > this.imageSettings.confidenceThresholds.high) {
-                    result = { isNSFW: false, confidence, resolution: size };
-                    break;
-                }
-
                 result = { 
                     isNSFW: currentResult.isNSFW, 
                     confidence,
@@ -632,4 +627,5 @@ class NsfwDetector {
 // Make both classes available globally
 window.NsfwClassifier = NsfwClassifier;
 window.NsfwDetector = NsfwDetector;
+
 

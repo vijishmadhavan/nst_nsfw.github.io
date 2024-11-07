@@ -18,7 +18,7 @@ class LRUCache {
         // Refresh item's position in cache
         this.cache.delete(key);
         this.cache.set(key, item);
-        
+
         return item.value;
     }
 
@@ -65,40 +65,42 @@ class NsfwClassifier {
 
     async loadModel() {
         if (!this.model) {
-            console.log('Loading model from:', this.MODEL_URL);
-            this.model = await tf.loadLayersModel(this.MODEL_URL);
-            console.log('Model loaded:', this.model);
+            try {
+                // Try to load from IndexedDB
+                this.model = await tf.loadLayersModel('indexeddb://nsfw-classifier-model');
+                // Model loaded from IndexedDB
+            } catch (e) {
+                // Load model from URL
+                this.model = await tf.loadLayersModel(this.MODEL_URL);
+                // Save to IndexedDB for future use
+                await this.model.save('indexeddb://nsfw-classifier-model');
+            }
         }
         return this.model;
     }
 
     async classifyImage(imageElement) {
         const model = await this.loadModel();
-        const predictions = await model.predict(
-            tf.tidy(() => {
-                return tf.browser.fromPixels(imageElement)
-                    .resizeBilinear([224, 224])
-                    .toFloat()
-                    .div(tf.scalar(255))
-                    .expandDims();
-            })
-        );
-        const result = predictions.dataSync();
-        predictions.dispose();
-        return result;
+        let predictions;
+        try {
+            predictions = await model.predict(
+                tf.tidy(() => {
+                    return tf.browser.fromPixels(imageElement)
+                        .resizeBilinear([224, 224])
+                        .toFloat()
+                        .div(tf.scalar(255))
+                        .expandDims();
+                })
+            );
+            const result = predictions.dataSync();
+            return result;
+        } finally {
+            if (predictions) predictions.dispose();
+        }
     }
 
-    async isNsfw(imageUrl) {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.src = imageUrl;
-
-        await new Promise((resolve, reject) => {
-            img.onload = resolve;
-            img.onerror = reject;
-        });
-
-        const predictions = await this.classifyImage(img);
+    async isNsfw(imageElement) {
+        const predictions = await this.classifyImage(imageElement);
         const results = this.classes.map((className, index) => ({
             className,
             probability: predictions[index]
@@ -114,7 +116,6 @@ class NsfwClassifier {
             isNSFW,
             results
         };
-        console.log('NSFW detection result:', result);
         return result;
     }
 }
@@ -130,11 +131,20 @@ class NsfwTextClassifier {
 
     async loadModel() {
         if (!this.model) {
-            console.log('Loading text classification model...');
-            this.model = await tf.loadLayersModel(this.MODEL_URL);
-            const tokenizerResponse = await fetch(this.TOKENIZER_URL);
-            this.tokenizer = await tokenizerResponse.json();
-            console.log('Text classification model loaded');
+            try {
+                // Try to load model from IndexedDB
+                this.model = await tf.loadLayersModel('indexeddb://nsfw-text-classifier-model');
+            } catch (e) {
+                // Load model from URL
+                this.model = await tf.loadLayersModel(this.MODEL_URL);
+                // Save model to IndexedDB
+                await this.model.save('indexeddb://nsfw-text-classifier-model');
+            }
+            // Load tokenizer
+            if (!this.tokenizer) {
+                const tokenizerResponse = await fetch(this.TOKENIZER_URL);
+                this.tokenizer = await tokenizerResponse.json();
+            }
         }
         return this.model;
     }
@@ -142,43 +152,45 @@ class NsfwTextClassifier {
     tokenizeText(text) {
         // Convert text to lowercase and split into words
         const words = text.toLowerCase().split(/\s+/);
-        
+
         // Convert words to token indices
         const sequence = words.map(word => this.tokenizer[word] || this.tokenizer['<OOV>']);
-        
+
         // Pad sequence to fixed length
         const padded = sequence.slice(0, this.maxSequenceLength);
         while (padded.length < this.maxSequenceLength) {
-            padded.push(0);  // Padding token
+            padded.push(0); // Padding token
         }
-        
+
         return padded;
     }
 
     async classifyText(prompt, negativePrompt = '') {
         const model = await this.loadModel();
-        
+
         // Tokenize both prompts
         const promptTokens = this.tokenizeText(prompt);
         const negPromptTokens = this.tokenizeText(negativePrompt);
-        
+
         // Convert to tensors
         const promptTensor = tf.tensor2d([promptTokens], [1, this.maxSequenceLength]);
         const negPromptTensor = tf.tensor2d([negPromptTokens], [1, this.maxSequenceLength]);
-        
+
         // Get prediction
-        const prediction = await model.predict([promptTensor, negPromptTensor]);
-        const score = prediction.dataSync()[0];
-        
-        // Cleanup
-        promptTensor.dispose();
-        negPromptTensor.dispose();
-        prediction.dispose();
-        
-        return {
-            isNSFW: score > 0.5,
-            score: score
-        };
+        let prediction;
+        try {
+            prediction = await model.predict([promptTensor, negPromptTensor]);
+            const score = prediction.dataSync()[0];
+
+            return {
+                isNSFW: score > 0.5,
+                score: score
+            };
+        } finally {
+            promptTensor.dispose();
+            negPromptTensor.dispose();
+            if (prediction) prediction.dispose();
+        }
     }
 }
 
@@ -186,16 +198,15 @@ class NsfwDetector {
     constructor() {
         this.nsfwClassifier = new NsfwClassifier();
         this.textClassifier = new NsfwTextClassifier();
-        
-        // Add cache with size limit to prevent memory issues
-        this.cache = new LRUCache({
-            max: 500,              // Store more results
-            maxAge: 1000 * 60 * 60 // 1 hour cache
-        });
-        this.maxCacheSize = 100; // Limit cache to last 100 items
+
+        this.maxCacheSize = 500; // Adjusted cache size
         this.cacheDuration = 5 * 60 * 1000; // 5 minutes in milliseconds
-        
-        // Fix: Assign arrays to class properties using 'this'
+
+        this.cache = new LRUCache({
+            max: this.maxCacheSize,
+            maxAge: this.cacheDuration
+        });
+
         this.nsfwKeywords = [
             "hardcore","kiss","kissing", "obscene", "nude", "nudity", "naked", "sensual", "provocative", 
             "suggestive", "fetish", "kink", "voyeur", "seductive", "sexual", "lustful", 
@@ -252,7 +263,8 @@ class NsfwDetector {
             "lingerie", "swimwear", "bikini","bathtub","sweaty"
             // Add remaining NSFW keywords here
         ];
-        
+
+        // Under 20 keywords (list truncated for brevity)
         this.under20Keywords = [
             "adolescent", "baby", "birthday party", "boy", "child", "classmate", "daycare", 
             "freshman", "girl", "high school", "infant", "junior", "kid", "kids", "kindergartener", 
@@ -261,78 +273,39 @@ class NsfwDetector {
             "student", "teen", "teenager", "toddler", "under 20", "underage", "young adult", 
             "youngster", "youth"
         ];
-        
-        this.ageThreshold = 22;
-        this.neutralThreshold = 0.9; // 90% threshold for neutral class
+        // Precompile regex patterns
+        this.nsfwKeywordRegex = new RegExp(`\\b(${this.nsfwKeywords.join('|')})\\b`, 'i');
+        this.under20KeywordRegex = new RegExp(`\\b(${this.under20Keywords.join('|')})\\b`, 'i');
 
-        // Image processing settings
         this.imageSettings = {
             maxSize: 512,          // Capped at 512
-            progressiveSizes: [     
-                256,              // Fast first pass
-                512               // Final check if needed
-            ],
+            progressiveSizes: [256, 512], // Adjusted sizes
             confidenceThresholds: {
-                low: 0.5,
-                high: 0.8         // Can be more strict with smaller sizes
+                256: 0.8,
+                512: 0.6
             }
         };
 
-        // Enhanced caching with metadata
-        this.cache = new LRUCache({
-            max: 500,              // Store more results
-            maxAge: 1000 * 60 * 60 // 1 hour cache
-        });
-
-        // Add to class properties
+        // Preload queue
         this.imagePreloadQueue = new Map();
         this.preloadLimit = 5;  // Limit concurrent preloads
+
+        this.faceModelsLoaded = false; // For lazy loading face models
     }
 
     async initialize() {
-        console.time('Total Model Loading Time');
-        
-        // Individual model timing
-        console.log('Starting model loading...');
-        
-        const startTime = performance.now();
-        
-        try {
-            await Promise.all([
-                this.timeModelLoad('NSFW Classifier', () => this.nsfwClassifier.loadModel()),
-                this.timeModelLoad('Text Classifier', () => this.textClassifier.loadModel()),
-                this.timeModelLoad('Face Detector', () => faceapi.nets.tinyFaceDetector.loadFromUri('./models')),
-                this.timeModelLoad('Age Gender Net', () => faceapi.nets.ageGenderNet.loadFromUri('./models'))
-            ]);
-            
-            const endTime = performance.now();
-            console.log(`Total initialization time: ${((endTime - startTime) / 1000).toFixed(2)} seconds`);
-        } catch (error) {
-            console.error('Error during initialization:', error);
-        }
-        
-        console.timeEnd('Total Model Loading Time');
-    }
-
-    async timeModelLoad(modelName, loadFunction) {
-        const start = performance.now();
-        await loadFunction();
-        const end = performance.now();
-        console.log(`${modelName} loaded in ${((end - start) / 1000).toFixed(2)} seconds`);
+        // Load models
+        await Promise.all([
+            this.nsfwClassifier.loadModel(),
+            this.textClassifier.loadModel()
+        ]);
     }
 
     containsKeywords(text) {
         if (!text) return false;
         const lowerText = text.toLowerCase();
-        
-        // Create regex patterns with word boundaries
-        const matchWord = (keyword) => {
-            const pattern = new RegExp(`\\b${keyword}\\b`, 'i');
-            return pattern.test(lowerText);
-        };
 
-        return this.nsfwKeywords.some(matchWord) || 
-               this.under20Keywords.some(matchWord);
+        return this.nsfwKeywordRegex.test(lowerText) || this.under20KeywordRegex.test(lowerText);
     }
 
     convertHotpotLinkToS3(hotpotLink) {
@@ -341,20 +314,11 @@ class NsfwDetector {
     }
 
     async analyzeImage(imageUrl) {
-        console.time('image-processing');
-        
         try {
             const result = await this.processImageProgressive(imageUrl);
-            
-            // Log performance metrics
-            console.log(`Processed at ${result.resolution}px with confidence ${result.confidence}`);
-            
             return result;
         } catch (error) {
-            console.error('Image processing error:', error);
             return { isNSFW: true, reason: 'Processing error' };
-        } finally {
-            console.timeEnd('image-processing');
         }
     }
 
@@ -362,48 +326,50 @@ class NsfwDetector {
         // Check cache first
         const cachedResult = this.getFromCache(hotpotLink);
         if (cachedResult) {
-            console.log('Using cached result for:', hotpotLink);
             return cachedResult;
         }
 
         const url = new URL(hotpotLink);
         const title = url.searchParams.get("title");
-    
-        console.time('keyword-check');
+
         if (this.containsKeywords(title)) {
             const result = { isNSFW: true, reason: 'Keyword match' };
             this.addToCache(hotpotLink, result);
-            console.timeEnd('keyword-check');
+            // Log the NSFW detection
+            console.log(`NSFW detected: ${hotpotLink}`);
             return result;
         }
-        console.timeEnd('keyword-check');
-    
-        console.time('text-classification');
+
         const textResult = await this.textClassifier.classifyText(title);
-        console.timeEnd('text-classification');
-        
+
         if (textResult.isNSFW) {
             const result = { isNSFW: true, reason: 'Text classification' };
             this.addToCache(hotpotLink, result);
+            // Log the NSFW detection
+            console.log(`NSFW detected: ${hotpotLink}`);
             return result;
         }
-    
+
         const imageUrl = this.convertHotpotLinkToS3(hotpotLink);
         if (!imageUrl) {
             const result = { isNSFW: false, reason: 'Link conversion failed' };
             this.addToCache(hotpotLink, result);
             return result;
         }
-    
-        console.time('image-classification');
+
         const result = await this.analyzeImage(imageUrl);
-        console.timeEnd('image-classification');
-        
-        const finalResult = result.isNSFW ? 
-            { isNSFW: true, reason: 'Image classification' } : 
+
+        const finalResult = result.isNSFW ?
+            { isNSFW: true, reason: 'Image classification' } :
             { isNSFW: false, imageUrl: imageUrl };
-            
+
         this.addToCache(hotpotLink, finalResult);
+
+        if (finalResult.isNSFW) {
+            // Log the NSFW detection
+            console.log(`NSFW detected: ${imageUrl}`);
+        }
+
         return finalResult;
     }
 
@@ -411,143 +377,75 @@ class NsfwDetector {
         const cached = this.cache.get(key);
         if (!cached) return null;
 
-        // Check if cache entry has expired
-        if (Date.now() - cached.timestamp > this.cacheDuration) {
-            this.cache.delete(key);
-            return null;
-        }
-
-        return cached.result;
+        return cached; // LRUCache handles expiration
     }
 
     addToCache(key, result) {
-        // Remove oldest entry if cache is full
-        if (this.cache.size >= this.maxCacheSize) {
-            const firstKey = this.cache.keys().next().value;
-            this.cache.delete(firstKey);
-        }
-
-        this.cache.set(key, {
-            result,
-            timestamp: Date.now()
-        });
+        this.cache.set(key, result);
     }
 
     async loadImage(url) {
-        // Check preload cache first
-        const preloaded = this.imagePreloadQueue.get(url);
-        if (preloaded) {
-            try {
-                const img = await preloaded.promise;
-                this.imagePreloadQueue.delete(url);  // Cleanup
-                return img;
-            } catch (error) {
-                this.imagePreloadQueue.delete(url);  // Cleanup on error
-            }
+        try {
+            const response = await fetch(url, { mode: 'cors' });
+            const blob = await response.blob();
+            const imgBitmap = await createImageBitmap(blob);
+            return imgBitmap;
+        } catch (error) {
+            throw error;
         }
-
-        // Fallback to regular loading
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            
-            const timeout = setTimeout(() => {
-                reject(new Error('Image loading timeout'));
-            }, 10000); // 10 second timeout
-            
-            img.onload = () => {
-                clearTimeout(timeout);
-                resolve(img);
-            };
-            
-            img.onerror = () => {
-                clearTimeout(timeout);
-                reject(new Error('Failed to load image'));
-            };
-            
-            img.src = url + (url.includes('?') ? '&' : '?') + 'cache=' + Date.now();
-        });
-    }
-
-    async detectAge(img) {
-        const detections = await faceapi
-            .detectAllFaces(img, new faceapi.TinyFaceDetectorOptions())
-            .withAgeAndGender();
-
-        if (detections.length > 0) {
-            return Math.round(detections[0].age);
-        }
-        return null;
     }
 
     async processImageProgressive(imageUrl) {
-        // Start with a very small size first for quick initial check
-        const progressiveSizes = [128, 256, 512]; // Added smaller initial size
-        const confidenceThresholds = {
-            128: 0.85,  // Higher confidence needed for small size
-            256: 0.75,  // Medium confidence for medium size
-            512: 0.65   // Lower confidence acceptable for full size
-        };
-
-        const cacheKey = `${imageUrl}_${this.imageSettings.maxSize}`;
-        const cached = this.getFromCache(cacheKey);
-        if (cached) return cached;
+        const progressiveSizes = this.imageSettings.progressiveSizes;
+        const confidenceThresholds = this.imageSettings.confidenceThresholds;
 
         let result = null;
-        const startTime = performance.now();
 
         try {
             for (const size of progressiveSizes) {
                 const img = await this.loadImage(imageUrl);
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
-                
+
                 let [width, height] = this.calculateDimensions(img, size);
                 canvas.width = width;
                 canvas.height = height;
-                
-                // Use lower quality for initial passes to improve speed
-                const quality = size === 512 ? 0.9 : 0.7;
+
+                // Draw the image onto the canvas
                 ctx.drawImage(img, 0, 0, width, height);
-                
-                const blob = await new Promise(resolve => 
-                    canvas.toBlob(resolve, 'image/jpeg', quality)
+
+                // Convert canvas to blob
+                const blob = await new Promise(resolve =>
+                    canvas.toBlob(resolve, 'image/jpeg')
                 );
-                
-                const resizedImageUrl = URL.createObjectURL(blob);
-                const currentResult = await this.nsfwClassifier.isNsfw(resizedImageUrl);
-                URL.revokeObjectURL(resizedImageUrl);
-                
+
+                // Create ImageBitmap from blob
+                const resizedImg = await createImageBitmap(blob);
+
+                const currentResult = await this.nsfwClassifier.isNsfw(resizedImg);
+
                 const confidence = Math.max(...currentResult.results.map(r => r.probability));
-                
+
                 // Early return if we're confident enough at current resolution
                 if (confidence > confidenceThresholds[size]) {
-                    result = { 
-                        isNSFW: currentResult.isNSFW, 
+                    result = {
+                        isNSFW: currentResult.isNSFW,
                         confidence,
-                        resolution: size 
+                        resolution: size
                     };
                     break;
                 }
-                
-                result = { 
-                    isNSFW: currentResult.isNSFW, 
+
+                result = {
+                    isNSFW: currentResult.isNSFW,
                     confidence,
-                    resolution: size 
+                    resolution: size
                 };
             }
-
-            // Cache result
-            this.addToCache(cacheKey, {
-                ...result,
-                timestamp: Date.now(),
-                processingTime: performance.now() - startTime
-            });
 
             return result;
 
         } catch (error) {
-            console.error('Progressive image processing error:', error);
             throw error;
         }
     }
@@ -561,22 +459,6 @@ class NsfwDetector {
         ];
     }
 
-    // Enhanced caching with compression
-    addToCache(key, value) {
-        // Compress confidence scores to 2 decimal places
-        if (value.results) {
-            value.results = value.results.map(r => ({
-                ...r,
-                probability: Math.round(r.probability * 100) / 100
-            }));
-        }
-
-        this.cache.set(key, {
-            ...value,
-            cached: Date.now()
-        });
-    }
-
     // Preload method
     preloadImages(urls) {
         // Remove old preloads
@@ -588,44 +470,29 @@ class NsfwDetector {
 
         // Add new URLs to preload queue
         urls.forEach(url => {
-            if (!this.imagePreloadQueue.has(url) && 
+            if (!this.imagePreloadQueue.has(url) &&
                 this.imagePreloadQueue.size < this.preloadLimit) {
-                
-                const img = new Image();
-                img.crossOrigin = 'anonymous';
-                
-                const promise = new Promise((resolve, reject) => {
-                    const timeout = setTimeout(() => {
-                        this.imagePreloadQueue.delete(url);
-                        reject(new Error('Preload timeout'));
-                    }, 30000);
 
-                    img.onload = () => {
-                        clearTimeout(timeout);
-                        resolve(img);
-                    };
-                    
-                    img.onerror = () => {
-                        clearTimeout(timeout);
+                const promise = fetch(url, { mode: 'cors' })
+                    .then(response => response.blob())
+                    .then(blob => createImageBitmap(blob))
+                    .then(imgBitmap => ({ imgBitmap, timestamp: Date.now() }))
+                    .catch(error => {
                         this.imagePreloadQueue.delete(url);
-                        reject(new Error('Failed to preload'));
-                    };
-                });
+                    });
 
                 this.imagePreloadQueue.set(url, {
-                    img,
                     promise,
                     timestamp: Date.now()
                 });
-                
-                img.src = url + (url.includes('?') ? '&' : '?') + 'cache=' + Date.now();
             }
         });
     }
 }
 
-// Make both classes available globally
+// Make classes available globally
 window.NsfwClassifier = NsfwClassifier;
+window.NsfwTextClassifier = NsfwTextClassifier;
 window.NsfwDetector = NsfwDetector;
 
 

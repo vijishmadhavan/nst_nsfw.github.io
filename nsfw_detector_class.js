@@ -260,18 +260,44 @@ class NsfwDetectorClass {
             "hot girl", "playgirl", "adult movie", "adult site", "erotic movie", 
             "adult content", "bareback", "buttplug", "anal beads", "dildo", "vibrator", 
             "sex toy", "strap-on", "sex slave", "dominatrix", "latex","bra","bondage gear",
-            "lingerie", "swimwear", "bikini","bathtub","sweaty"
-            // Add remaining NSFW keywords here
+            "lingerie", "swimwear", "bikini","bathtub","sweaty",
+            "fuck", "shit", "cock", "tidd", "clit", "dick", "pussy", "boob", "testicl", 
+            "nigga", "chink", "jew", "brothel", "undies", "birthday suit", "gang", 
+            "cumshot", "cum", "niple", "lana", "jayden", "riley reid", "breed", "dani", 
+            "nip slip", "nipslip", "cunt", "dong", "magnum", "snort", "crack", "cocaine", 
+            "nymph", "nigger", "hunk", "lewd", "fellatio", "vulva", "pedophi", "paedophi", 
+            "milf", "cunnilingus", "exspose", "upskirt", "pawg", "bbw", "oppai", "pechos", 
+            "desnuda", "ava addams", "angela white", "milkers", "succubus", "tiddies", 
+            "coitus", "shagging", "b00b", "n0de", "gluteus maximus", "brazzer", "ahegao", 
+            "petajansen", "hentia", "botty", "titten", "ecchi doujin", "alison tyler", 
+            "alura jenson", "chesticle", "sloot", "cadaver", "bewbs", "fornicat", "phallus", 
+            "twat", "squabitis", "bushless", "twinks", "ballbust", "squirting", "hotwife",
+            "bangbro", "futanari", "cameltoe", "beastiality", "giantess", "butthole", 
+            "facesit", "castrated", "hogtie", "vigina", "henati", "diaper", "urinat",
+            "maggot", "vaggina", "licck", "ppenis", "cguming", "femdom", "k18", "rectal"
         ];
 
         // Under 20 keywords (list truncated for brevity)
         this.under20Keywords = [
-            "adolescent", "baby", "cutie", "birthday party", "boy", "child", "classmate", "daycare", 
+            "adolescent", "baby", "birthday party", "boy", "child", "classmate", "daycare", 
             "freshman", "girl", "high school", "infant", "junior", "kid", "kids", "kindergartener", 
             "little boy", "little girl", "middle school", "minor", "preschool", "primary school", 
             "pubescent", "schoolboy", "schoolgirl", "second grader", "senior", "sophomore", 
             "student", "teen", "teenager", "toddler", "under 20", "underage", "young adult", 
-            "youngster", "youth"
+            "youngster", "youth",
+
+            // Additional words from underageKeywords
+            "tween", "preteen", "preadolescent", "juvenile", "pupil", "preschooler", "elementary",
+
+            // Additional words from gradeKeywords
+            "first", "second", "third", "fourth", "fifth", "sixth", "seventh",
+            "eighth", "ninth", "tenth", "eleventh", "twelfth", "1st", "2nd",
+            "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th", "11th", "12th",
+
+            // Additional words from ageKeywords
+            "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven",
+            "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen","cutie",
+            "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17"
         ];
         // Precompile regex patterns
         this.nsfwKeywordRegex = new RegExp(`\\b(${this.nsfwKeywords.join('|')})\\b`, 'i');

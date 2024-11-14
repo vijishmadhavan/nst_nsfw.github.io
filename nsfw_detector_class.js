@@ -238,7 +238,7 @@ class NsfwDetectorClass {
             "gore", "snuff", "beheading", "brutality", "torture", "gruesome", "disgusting", 
             "grotesque", "bloody", "mutilation", "self-harm", "suicide", "killing", 
             "murder", "slaughter", "injure", "injury", "rape scene", "porn video", 
-            "sex tape", "sex video", "creampie", "facial", "gagging", "rough sex", 
+            "sex tape", "sex video", "creampie", "facial", "gagging","bath","shower", "rough sex", 
             "anal", "fisting", "gaping", "penetrate", "penile", "vaginal", "g-string", 
             "seduce", "seducing", "intercourse", "copulation", "intimacy", "intimate", 
             "intimately", "making out", "make out", "foreplay", "tease", "aroused", 

@@ -266,7 +266,7 @@ class NsfwDetectorClass {
 
         // Under 20 keywords (list truncated for brevity)
         this.under20Keywords = [
-            "adolescent", "baby", "birthday party", "boy", "child", "classmate", "daycare", 
+            "adolescent", "baby", "cutie", "birthday party", "boy", "child", "classmate", "daycare", 
             "freshman", "girl", "high school", "infant", "junior", "kid", "kids", "kindergartener", 
             "little boy", "little girl", "middle school", "minor", "preschool", "primary school", 
             "pubescent", "schoolboy", "schoolgirl", "second grader", "senior", "sophomore", 

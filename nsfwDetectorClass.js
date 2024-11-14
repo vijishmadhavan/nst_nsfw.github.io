@@ -194,7 +194,7 @@ class NsfwTextClassifier {
     }
 }
 
-class NsfwDetector {
+class NsfwDetectorClass {
     constructor() {
         this.nsfwClassifier = new NsfwClassifier();
         this.textClassifier = new NsfwTextClassifier();
@@ -493,6 +493,6 @@ class NsfwDetector {
 // Make classes available globally
 window.NsfwClassifier = NsfwClassifier;
 window.NsfwTextClassifier = NsfwTextClassifier;
-window.NsfwDetector = NsfwDetector;
+window.NsfwDetectorClass = NsfwDetectorClass;
 
 
